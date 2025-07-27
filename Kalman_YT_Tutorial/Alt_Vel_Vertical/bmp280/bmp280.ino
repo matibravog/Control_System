@@ -18,6 +18,7 @@ int16_t  dig_T2, dig_T3, dig_P2, dig_P3, dig_P4, dig_P5;
 int16_t  dig_P6, dig_P7, dig_P8, dig_P9; 
 float AltitudeBarometer, AltitudeBarometerStartUp;
 int RateCalibrationNumber;
+
 void barometer_signals(void){
   Wire.beginTransmission(0x76);
   Wire.write(0xF7);
@@ -50,8 +51,7 @@ void barometer_signals(void){
   var2 = (((signed long int )(p>>2)) * ((signed long int )dig_P8))>>13;
   p = (unsigned long int)((signed long int )p + ((var1 + var2+ dig_P7) >> 4));
   double pressure=(double)p/100;
-  AltitudeBarometer=44330*(1-pow(pressure
-     /1013.25, 1/5.255))*100;
+  AltitudeBarometer=44330*(1-pow(pressure/1013.25, 1/5.255))*100;
 }
 
 void setup() {
@@ -97,6 +97,7 @@ void setup() {
   }
   AltitudeBarometerStartUp/=2000;
 }
+
 void loop() {
   barometer_signals();
   AltitudeBarometer-=AltitudeBarometerStartUp;

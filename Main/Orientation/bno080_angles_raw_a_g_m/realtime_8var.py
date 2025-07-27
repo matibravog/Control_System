@@ -1,0 +1,157 @@
+import serial
+import csv
+import os
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import threading
+import time
+
+n = int(input("Número de archivo: "))
+puerto_serial = 'COM11'
+baud_rate = 115200
+
+directorio = input("Especifica el directorio para guardar el archivo CSV (o déjalo en blanco para usar el directorio actual): ")
+if not directorio:
+    directorio = os.getcwd()
+
+Nombre_del_archivo = os.path.join(directorio, f'angles_from_raw_{n}.csv')
+
+BUFFER_SIZE = 100
+
+def inicializar_csv(nombre_archivo):
+    if not os.path.isfile(nombre_archivo):
+        with open(nombre_archivo, mode='w', newline='') as archivo_csv:
+            escritor = csv.writer(archivo_csv)
+            escritor.writerow(['Tiempo', 'ax', 'ay', 'az', 'gx', 'gy', 'gz', 'mx', 'my', 'mz', 'myaw1', 'myaw2'])
+
+def graficar_datos_en_tiempo_real(dato_lista):
+    fig, ax1 = plt.subplots(figsize=(12, 8))
+    fig.patch.set_facecolor('black')
+    ax1.set_facecolor('black')
+
+    # Inicializa las líneas
+    line_ax, = ax1.plot([], [], 'green', label='ax')
+    line_ay, = ax1.plot([], [], 'yellow', label='ay')
+    line_az, = ax1.plot([], [], 'cyan', label='az')
+    line_gx, = ax1.plot([], [], 'orange', label='gx')
+    line_gy, = ax1.plot([], [], 'purple', label='gy')
+    line_gz, = ax1.plot([], [], 'magenta', label='gz')
+    line_mx, = ax1.plot([], [], 'red', label='mx')
+    line_my, = ax1.plot([], [], 'blue', label='my')
+    line_mz, = ax1.plot([], [], 'brown', label='mz')
+    line_myaw1, = ax1.plot([], [], 'lime', label='myaw1')
+    line_myaw2, = ax1.plot([], [], 'white', label='myaw2')
+
+    ax1.set_xlim(0, 10)
+    ax1.set_ylim(-200, 200)
+
+    ax1.set_xlabel('Tiempo', color='white', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('Valores', color='white', fontsize=14, fontweight='bold')
+    ax1.set_title('Variables en Tiempo Real', color='white', fontsize=18, fontweight='bold')
+
+    ax1.grid(True, color='white', linestyle='--', linewidth=0.5)
+    ax1.tick_params(axis='both', colors='white', labelsize=12)
+    ax1.legend(loc='best', fontsize=12, frameon=False, labelcolor='white')
+
+    def init():
+        return line_ax, line_ay, line_az, line_gx, line_gy, line_gz, line_mx, line_my, line_mz, line_myaw1, line_myaw2
+
+    def update(frame):
+        try:
+            if not dato_lista:
+                return init()
+
+            unpacked = list(zip(*dato_lista))
+            tiempo = list(unpacked[0])
+            ax, ay, az = map(list, unpacked[1:4])
+            gx, gy, gz = map(list, unpacked[4:7])
+            mx, my, mz = map(list, unpacked[7:10])
+            myaw1, myaw2 = map(list, unpacked[10:12])
+
+            ax1.set_xlim(min(tiempo), max(tiempo) + 1)
+
+            line_ax.set_data(tiempo, ax)
+            line_ay.set_data(tiempo, ay)
+            line_az.set_data(tiempo, az)
+            line_gx.set_data(tiempo, gx)
+            line_gy.set_data(tiempo, gy)
+            line_gz.set_data(tiempo, gz)
+            line_mx.set_data(tiempo, mx)
+            line_my.set_data(tiempo, my)
+            line_mz.set_data(tiempo, mz)
+            line_myaw1.set_data(tiempo, myaw1)
+            line_myaw2.set_data(tiempo, myaw2)
+
+        except Exception as e:
+            print(f"Error al actualizar el gráfico: {e}")
+
+        return line_ax, line_ay, line_az, line_gx, line_gy, line_gz, line_mx, line_my, line_mz, line_myaw1, line_myaw2
+
+    ani = animation.FuncAnimation(fig, update, init_func=init, interval=1)
+    plt.show()
+
+
+def main():
+    dato_lista = []
+    tiempo_actual = 0
+    puerto = None
+
+    try:
+        puerto = serial.Serial(puerto_serial, baud_rate)
+        print("Leyendo datos del puerto serial y guardándolos...")
+
+        inicializar_csv(Nombre_del_archivo)
+
+        graficar_thread = threading.Thread(target=graficar_datos_en_tiempo_real, args=(dato_lista,))
+        graficar_thread.start()
+
+        while True:
+            try:
+                dato = puerto.readline().decode().strip()
+                print(f"Raw data received: {dato}")
+                medicion = dato.split(',')
+
+                if len(medicion) == 11:
+                    ax = float(medicion[0])
+                    ay = float(medicion[1])
+                    az = float(medicion[2])
+                    gx = float(medicion[3])
+                    gy = float(medicion[4])
+                    gz = float(medicion[5])
+                    mx = float(medicion[6])
+                    my = float(medicion[7])
+                    mz = float(medicion[8])
+                    myaw1 = float(medicion[9])
+                    myaw2 = float(medicion[10])
+
+                    tiempo_actual += 0.02
+
+                    with open(Nombre_del_archivo, mode='a', newline='') as archivo_csv:
+                        escritor = csv.writer(archivo_csv)
+                        escritor.writerow([tiempo_actual, ax, ay, az, gx, gy, gz, mx, my, mz, myaw1, myaw2])
+
+                    dato_lista.append((tiempo_actual, ax, ay, az, gx, gy, gz, mx, my, mz, myaw1, myaw2))
+
+                    if len(dato_lista) > BUFFER_SIZE:
+                        dato_lista.pop(0)
+
+                    print(f'Dato recibido y guardado: {dato}')
+                else:
+                    print("Error: El formato de los datos no es el esperado.")
+
+            except ValueError:
+                print("Error: Los datos recibidos no se pueden convertir a números.")
+
+    except serial.SerialException as e:
+        print(f"Error al abrir el puerto serial: {e}")
+
+    except KeyboardInterrupt:
+        print("Lectura detenida por el usuario.")
+    
+    finally:
+        if puerto and puerto.is_open:
+            puerto.close()
+        print("Conexión serial cerrada.")
+
+if __name__ == "__main__":
+    main()

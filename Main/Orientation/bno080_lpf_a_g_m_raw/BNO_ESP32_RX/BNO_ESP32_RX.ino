@@ -1,6 +1,7 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
+// this are angles calculated with each sensor
 typedef struct {
     float ax, ay, az;
     float gx, gy, gz;

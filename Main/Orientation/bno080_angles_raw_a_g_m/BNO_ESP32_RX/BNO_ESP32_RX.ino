@@ -1,10 +1,12 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
+// this are angles calculated with each sensor
 typedef struct {
     float ax, ay, az;
     float gx, gy, gz;
     float mx, my, mz;
+    float myaw1, myaw2;
 } SensorData;
 
 SensorData receivedData;
@@ -27,7 +29,9 @@ void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
     Serial.print(","); Serial.print(receivedData.gz);
     Serial.print(","); Serial.print(receivedData.mx);
     Serial.print(","); Serial.print(receivedData.my);
-    Serial.print(","); Serial.println(receivedData.mz);
+    Serial.print(","); Serial.print(receivedData.mz);
+    Serial.print(","); Serial.print(receivedData.myaw1);
+    Serial.print(","); Serial.println(receivedData.myaw2);
 }
 
 void setup() {

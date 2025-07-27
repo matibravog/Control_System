@@ -2,9 +2,7 @@
 #include <WiFi.h>
 
 typedef struct {
-    float ax, ay, az;
-    float gx, gy, gz;
-    float mx, my, mz;
+    float kalmanPitch, kalmanRoll;
 } SensorData;
 
 SensorData receivedData;
@@ -19,15 +17,8 @@ void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
     // }
     // Serial.println();
 
-    Serial.print(receivedData.ax);
-    Serial.print(","); Serial.print(receivedData.ay);
-    Serial.print(","); Serial.print(receivedData.az);
-    Serial.print(","); Serial.print(receivedData.gx);
-    Serial.print(","); Serial.print(receivedData.gy);
-    Serial.print(","); Serial.print(receivedData.gz);
-    Serial.print(","); Serial.print(receivedData.mx);
-    Serial.print(","); Serial.print(receivedData.my);
-    Serial.print(","); Serial.println(receivedData.mz);
+    Serial.print(receivedData.kalmanPitch);Serial.print(","); 
+    Serial.println(receivedData.kalmanRoll);
 }
 
 void setup() {
