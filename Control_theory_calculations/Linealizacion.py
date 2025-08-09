@@ -2,37 +2,37 @@ import sympy as sp
 
 # Definir variables
 x = sp.Matrix(sp.symbols('x1:7'))  # x1, x2, ..., x6
-
+d = sp.symbols('d')
 # Definir momentos y momentos de inercia como variables simbólicas
 Lp, Mp, Np, ix, iy, iz = sp.symbols('Lp Mp Np ix iy iz')
 
 u = sp.Matrix([Mp, Lp, Np])  # Vector de entrada
 
 #para operar
-# q         0 
-# p         1
+# p         0 
+# q         1
 # r         2
-# theta     3   
-# phi       4
+# phi     3   
+# theta       4
 # psi       5
 
 
 # en simbolos
-# q         1 
-# p         2
+# p         1 
+# q         2
 # r         3
-# theta     4   
-# phi       5
+# phi       4
+# theta     5   
 # psi       6
 
 
 # Definir función vectorial f(x)
 f = sp.Matrix([
-    (Mp - x[1]*x[2]*(iy-iz))/ix,
-    (Lp - x[0]*x[2]*(iz-ix))/iy,
-    (Np - x[1]*x[0]*(ix-iy))/iz,
-    x[1]*sp.cos(x[4]) - x[2]*sp.sin(x[4]),
+    (Mp -d*x[0] - x[1]*x[2]*(iz-iy))/ix,
+    (Lp -d*x[1] - x[0]*x[2]*(ix-iz))/iy,
+    (Np -d*x[2] - x[1]*x[0]*(iy-ix))/iz,
     x[0] + (x[1]*sp.sin(x[4])+x[2]*sp.cos(x[4]))*sp.tan(x[3]),
+    x[1]*sp.cos(x[4]) - x[2]*sp.sin(x[4]),
     (x[1]*sp.sin(x[4]) + x[2]*sp.cos(x[4]))/sp.cos(x[3]),
 ])
 

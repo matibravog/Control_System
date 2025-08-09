@@ -17,7 +17,7 @@ setpoints_roll = [0, 45, 0]
 setpoints_pitch = [0, 45, 0]
 setpoints_roll_rad = np.deg2rad(setpoints_roll)
 setpoints_pitch_rad = np.deg2rad(setpoints_pitch)
-setpoint_interval = int(2 / dt)
+setpoint_interval = int(2/ dt)
 
 # Inicializaciones
 y_roll = np.zeros_like(t)
@@ -30,8 +30,8 @@ r_roll = np.zeros_like(t)
 r_pitch = np.zeros_like(t)
 
 # Condiciones iniciales (ángulos en grados)
-initial_roll_deg =30
-initial_pitch_deg = 30
+initial_roll_deg =45
+initial_pitch_deg = 45
 y_roll[0] = np.deg2rad(initial_roll_deg)
 y_pitch[0] = np.deg2rad(initial_pitch_deg)
 

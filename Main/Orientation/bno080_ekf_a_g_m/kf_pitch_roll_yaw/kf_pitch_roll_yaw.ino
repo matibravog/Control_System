@@ -11,7 +11,7 @@ BNO080 myIMU;
 float LoopTimer;
 float kalmanPitch, kalmanRoll, kalmanYaw = 0;
 int sample_rate = 20; // 20Hz sample rate
-float dt = 1/sample_rate; // s
+float dt = 1.0f /sample_rate; // s
 
 // --------- TELEMETRY -------------------- 
 uint8_t receiverMAC[] = {0x5C, 0x01, 0x3B, 0x65, 0xDD, 0x60};
@@ -43,7 +43,7 @@ BLA::Matrix<3,3> inv_L = Inverse(L); // aux. variable inverted
 BLA::Matrix<3, 3> K; // kalman gain
 BLA::Matrix<3, 1> Y; // aux-2 variable
 
-void kalman_2d(BLA::Matrix<3, 1> &u, BLA::Matrix<3, 1> &Z, BLA::Matrix<3, 3> &B) {
+void kalman_2d(BLA::Matrix<3, 1> &u, BLA::Matrix<3, 1> &Z, BLA::Matrix<3, 3> &B, BLA::Matrix<3, 3> &Q) {
   
   // state and uncertinty prediction
   X = A*X + B*u;
@@ -108,21 +108,21 @@ void setup() {
        0, 1, 0,
        0, 0, 1};          
   
-  // process noise covariance
-  Q = B * ~B * 5.0f * 5.0f;
-  // measurement noise covariance
-  R = {0.5 *0.5,    0,          0,
-          0,     0.5 * 0.5,     0,
-          0,        0,         0.5 * 0.5};
+  // process noise covariance GYRO
+  Q = B * ~B * 2.0f * 2.0f;
+  // measurement noise covariance ACC, MAG
+  R = {0.5*0.5,    0,          0,
+          0,     0.5*0.5,     0,
+          0,        0,         3*3};
 
   // initial kalman state
   X = {0,
        0,
        0};
   // initial process uncertainty
-  P = {0, 0,0,
-       0, 0, 0,
-       0, 0, 0};
+  P = {0.1, 0,0,
+       0, 0.1, 0,
+       0, 0, 0.1};
   
        
        
@@ -159,9 +159,9 @@ void loop() {
     float az = myIMU.getRawAccelZ() * (9.8 / 4096.0);
 
     // Convert raw gyroscope data to rad/s
-    float gx = myIMU.getRawGyroX() * (1 / 16.0) * (PI / 180.0);
-    float gy = myIMU.getRawGyroY() * (1 / 16.0) * (PI / 180.0);
-    float gz = myIMU.getRawGyroZ() * (1 / 16.0) * (PI / 180.0);
+    float gx = myIMU.getRawGyroX() * (1 / 16.0) ;
+    float gy = myIMU.getRawGyroY() * (1 / 16.0) ;
+    float gz = myIMU.getRawGyroZ() * (1 / 16.0) ;
 
     float mx = myIMU.getRawMagX() * (1 / 16.0);
     float my = myIMU.getRawMagY() * (1 / 16.0);
@@ -170,16 +170,16 @@ void loop() {
     // Calculate pitch and roll using accelerometer
     float accelRoll = atan2(ay, az) * (180.0 / PI);
     float accelPitch = atan2(-ax, (ay*sin(accelRoll*PI/180) + az*cos(accelRoll*PI/180))) * (180.0 / PI);
-    float magYaw = atan2(-my*cos(kalmanPitch*PI/180) + mz*sin(kalmanPitch*PI/180), 
-                          mx*cos(kalmanRoll*PI/180) + my*sin(kalmanPitch*PI/180)*sin(kalmanRoll*PI/180) + mz*cos(kalmanPitch*PI/180)*sin(kalmanRoll*PI/180)) * (180.0 / PI);
-    // float magYaw = atan2(-my,mx) * (180.0 / PI);
+    // float magYaw = atan2(-my*cos(kalmanPitch*PI/180) + mz*sin(kalmanPitch*PI/180), 
+    //                       mx*cos(kalmanRoll*PI/180) + my*sin(kalmanPitch*PI/180)*sin(kalmanRoll*PI/180) + mz*cos(kalmanPitch*PI/180)*sin(kalmanRoll*PI/180)) * (180.0 / PI);
+    float magYaw = atan2(-my,mx) * (180.0 / PI);
 
     // Update global matrices
     BLA::Matrix<3, 1> u = {gx, gy, gz};
     BLA::Matrix<3, 1> Z = {accelPitch, accelRoll, magYaw};
 
     // Apply Kalman filter
-    kalman_2d(u, Z, B);
+    kalman_2d(u, Z, B, Q);
 
     // Update telemetry data
     sensorData.kalmanPitch = kalmanPitch;
@@ -190,7 +190,7 @@ void loop() {
     BLA::Matrix<3, 3> B = { 0.05, 0.05*sin(kalmanRoll*PI/180)*tan(kalmanPitch*PI/180),    0.05*cos(kalmanRoll*PI/180)*tan(kalmanPitch*PI/180),
          0,   0.05*cos(kalmanRoll*PI/180), -0.05*sin(kalmanRoll*PI/180),
          0,   0.05*sin(kalmanRoll*PI/180)/cos(kalmanPitch*PI/180),    0.05*cos(kalmanRoll*PI/180)/cos(kalmanPitch*PI/180) };
-    
+    BLA::Matrix<3, 3> Q  = B * ~B * 2.0f * 2.0f;
     // Print results
 
     Serial.print(kalmanPitch);

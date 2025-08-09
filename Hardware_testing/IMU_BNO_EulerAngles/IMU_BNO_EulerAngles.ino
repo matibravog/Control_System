@@ -30,10 +30,26 @@
 */
 
 #include <Wire.h>
-
+#include <WiFi.h>
+#include <esp_now.h>
 #include "SparkFun_BNO080_Arduino_Library.h" // Click here to get the library: http://librarymanager/All#SparkFun_BNO080
 BNO080 myIMU;
 
+// --------- TELEMETRY -------------------- 
+uint8_t receiverMAC[] = {0x5C, 0x01, 0x3B, 0x65, 0xDD, 0x60};
+
+// Data to send
+typedef struct {
+  float kalmanPitch, kalmanRoll, kalmanYaw;
+} SensorData;
+
+SensorData sensorData;
+
+// Callback
+void OnSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  Serial.print("Send Status: ");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
+}
 void setup()
 {
   Serial.begin(115200);
@@ -65,6 +81,26 @@ void setup()
 
   Serial.println(F("Rotation vector enabled"));
   Serial.println(F("Output in form roll, pitch, yaw"));
+
+    // INIT ESP-NOW PROTOCOL
+  WiFi.mode(WIFI_STA);
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("ESP-NOW Init Failed");
+    return;
+  }
+
+  // ESP-NOW / Register the send callback function
+  esp_now_register_send_cb(OnSent);
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, receiverMAC, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Failed to add peer");
+    return;
+  }
+  // LoopTimer=micros();
 }
 
 void loop()
@@ -76,6 +112,10 @@ void loop()
     float pitch = (myIMU.getPitch()) * 180.0 / PI; // Convert pitch to degrees
     float yaw = (myIMU.getYaw()) * 180.0 / PI; // Convert yaw / heading to degrees
 
+    sensorData.kalmanPitch = roll;
+    sensorData.kalmanRoll = pitch;
+    sensorData.kalmanYaw = yaw;
+
     Serial.print(roll, 1);
     Serial.print(F(","));
     Serial.print(pitch, 1);
@@ -84,4 +124,12 @@ void loop()
 
     Serial.println();
   }
+    // TELEMETRY
+  esp_err_t result = esp_now_send(receiverMAC, (uint8_t *)&sensorData, sizeof(sensorData));
+  if (result == ESP_OK) {
+    Serial.println("[Telemetry Task] Data sent successfully");
+  } else {
+    Serial.println("[Telemetry Task] Send failed");
+  }
+  delay(50);
 }

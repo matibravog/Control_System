@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 # Parámetros configurables
 # =========================
 
-# Simulación
 t_span = (0, 10)
 n_steps = 2000
 t_eval = np.linspace(*t_span, n_steps)
@@ -14,33 +13,13 @@ dt = t_eval[1] - t_eval[0]
 g = np.array([0, 0, 9.806])
 h = np.array([19172, 1562, 15144])
 
-# Ruido sensores (stddev)
-acc_noise = 1
-gyro_noise = 1
-mag_noise = 1
+acc_noise = 1   # ruido acelerómetro (m/s^2)
+gyro_noise = 1  # ruido giroscopio (rad/s)
+mag_noise = 1   # ruido magnetómetro (arbitrario)
 
-# PID ganancias y límites de ángulo servo (rad)
 servo_angle_limit_deg = 20
 servo_angle_limits = (-np.deg2rad(servo_angle_limit_deg), np.deg2rad(servo_angle_limit_deg))
 
-# ajuste manual
-# relativamente estable 
-# pid_params = {
-#     "phi": {"Kp": 0.1, "Ki": 0.5, "Kd": 0.1, "output_limits": servo_angle_limits},
-#     "theta": {"Kp": 0.1, "Ki": 0.5, "Kd": 0.1, "output_limits": servo_angle_limits},
-#     "psi": {"Kp": 0.1, "Ki": 0.5, "Kd": 0.1, "output_limits": servo_angle_limits},
-# }
-
-# ajuste automatico ISE
-# roll Kp=4.4826, Ki=0.9782, Kd=2.8817
-# pitch y yaw 4.0052, 0.8986, 2.197
-# pid_params = {
-#     "phi": {"Kp": 4.4826, "Ki": 0.09782, "Kd": 2.8817, "output_limits": servo_angle_limits},
-#     "theta": {"Kp": 4.0052, "Ki": 0.8986, "Kd": 2.197, "output_limits": servo_angle_limits},
-#     "psi": {"Kp": 4.0052, "Ki": 0.8986, "Kd": 2.197, "output_limits": servo_angle_limits},
-# }
-
-# ajuste automatico ISE + Energy
 pid_params = {
     "phi": {"Kp": 1.0424, "Ki": 0.0, "Kd": 0.0976, "output_limits": servo_angle_limits},
     "theta": {"Kp": 0.5760, "Ki": 0.0, "Kd": 0.1997, "output_limits": servo_angle_limits},
@@ -51,21 +30,18 @@ pid_params = {
 #     "theta": {"Kp": 0, "Ki": 0.0, "Kd": 0, "output_limits": servo_angle_limits},
 #     "psi": {"Kp": 0, "Ki": 0.0, "Kd": 0, "output_limits": servo_angle_limits},
 # }
-
-# Parámetros del motor TVC
 motor_force_kgf = 1.4
-motor_force = motor_force_kgf * 9.81  # Newtons
-lever_arm = 0.2  # m
+motor_force = motor_force_kgf * 9.81
+lever_arm = 0.2
 
-# Perturbación externa
 ext_torque_amp = 0.0
-ext_torque_freq = 0.0  # Hz
+ext_torque_freq = 0
 
-initial_pqr = np.deg2rad([0, 0, 0])  # rad/s
-initial_angles = np.deg2rad([0, 0, 0])  # rad
+initial_pqr = np.deg2rad([0, 0, 0])
+initial_angles = np.deg2rad([0, 0, 0])
 state = np.concatenate((initial_pqr, initial_angles)).astype(float)
 
-# Funciones de setpoint
+# Funciones setpoint
 def incremental_setpoint(t):
     if t < 4:
         return np.deg2rad(0)
@@ -84,11 +60,8 @@ def setpoint_phi(t): return incremental_setpoint(t)
 def setpoint_theta(t): return incremental_setpoint(t)
 def setpoint_psi(t): return incremental_setpoint(t)
 
-
-# =========================
-# Funciones y clases
-# =========================
-
+# -------------------
+# Dinámica rotacional
 def rocket_rotational_dynamics(y, torque):
     p, q, r, phi, theta, psi = y
     Tx, Ty, Tz = torque
@@ -119,6 +92,8 @@ def rocket_rotational_dynamics(y, torque):
 
     return np.array([p_dot, q_dot, r_dot, phi_dot, theta_dot, psi_dot])
 
+# -------------------
+# PID Controller
 class PID:
     def __init__(self, Kp, Ki, Kd, dt, output_limits=(None, None)):
         self.Kp = Kp
@@ -142,6 +117,8 @@ class PID:
         self.prev_error = error
         return output
 
+# -------------------
+# Rot matrix y obtención de Euler desde sensores
 def rot_matrix(phi, theta, psi):
     R_phi   = np.array([[1, 0, 0], [0, np.cos(phi), np.sin(phi)], [0, -np.sin(phi), np.cos(phi)]])
     R_theta = np.array([[np.cos(theta), 0, -np.sin(theta)], [0, 1, 0], [np.sin(theta), 0, np.cos(theta)]])
@@ -157,31 +134,52 @@ def euler_from_acceleration_vec(a, h):
                       hx*np.cos(theta) + hy*np.sin(phi)*np.sin(theta) + hz*np.cos(phi)*np.sin(theta))
     return np.array([phi, theta, psi])
 
-def kalman_2d(u, Z, X, A, B, P, Q, H, I, R):
-    X = A @ X + B @ u
-    P = A @ P @ A.T + Q
-    Y = Z - H @ X
-    L = H @ P @ H.T + R
-    K = P @ H.T @ np.linalg.inv(L)
-    X = X + K @ Y
-    P = (I - K @ H) @ P
-    return X
+# -------------------
+# EKF: estado, jacobiano, paso
+
+def f_state(x, u, dt):
+    return x + rocket_rotational_dynamics(x, u) * dt
+
+def compute_jacobian_f(f, x, u, dt, eps=1e-6):
+    n = len(x)
+    F = np.zeros((n, n))
+    fx = f(x, u, dt)
+    for i in range(n):
+        dx = np.zeros(n)
+        dx[i] = eps
+        F[:, i] = (f(x + dx, u, dt) - fx) / eps
+    return F
+
+def ekf_step(x, P, u, z, dt, Q, R):
+    x_pred = f_state(x, u, dt)
+    F = compute_jacobian_f(f_state, x, u, dt)
+    P_pred = F @ P @ F.T + Q
+
+    H = np.eye(6)
+    z_pred = x_pred
+    y = z - z_pred
+    S = H @ P_pred @ H.T + R
+
+    epsilon = 1e-6
+    S += np.eye(S.shape[0]) * epsilon
+
+    K = P_pred @ H.T @ np.linalg.inv(S)
+    x_upd = x_pred + K @ y
+    P_upd = (np.eye(len(x)) - K @ H) @ P_pred
+    return x_upd, P_upd
 
 # =========================
-# Inicialización
-# =========================
+# Inicialización EKF y PID
 
 pid_phi = PID(**pid_params["phi"], dt=dt)
 pid_theta = PID(**pid_params["theta"], dt=dt)
 pid_psi = PID(**pid_params["psi"], dt=dt)
 
-X = np.zeros((3, 1))
-A = np.eye(3)
-P = np.eye(3) * 1
-H = np.eye(3)
-I = np.eye(3)
-R = np.eye(3) * 25
-# R = np.diag([acc_noise**2, gyro_noise**2, mag_noise**2])
+X = np.concatenate((initial_pqr, initial_angles))  # estado inicial EKF
+P = np.eye(6) * 1  # cov inicial
+Q = np.eye(6) * 1  # ruido proceso
+R = np.eye(6) * 25
+
 
 log_true = []
 log_kalman = []
@@ -193,7 +191,6 @@ log_targets = []
 
 # =========================
 # Loop principal
-# =========================
 
 for i in range(n_steps):
     t = t_eval[i]
@@ -216,19 +213,12 @@ for i in range(n_steps):
 
     meas_euler = euler_from_acceleration_vec(acc_body, mag_body)
 
-    B = np.array([
-        [0, dt*np.cos(X[1,0]), -dt*np.sin(X[1,0])],
-        [dt, dt*np.sin(X[1,0])*np.tan(X[0,0]), dt*np.cos(X[1,0])*np.tan(X[0,0])],
-        [0, dt*np.sin(X[1,0])/np.cos(X[0,0]), dt*np.cos(X[1,0])/np.cos(X[0,0])]
-    ])
-    u = gyro_body.reshape(3, 1)
-    Z = meas_euler.reshape(3, 1)
-    Q = B @ B.T * 1**2
-    X = kalman_2d(u, Z, X, A, B, P, Q, H, I, R)
+    # Vector de medición completo (phi, theta, psi, p, q, r)
+    z_meas = np.concatenate([gyro_body,meas_euler ])
 
-    e_phi = phi_target - X[0,0]
-    e_theta = theta_target - X[1,0]
-    e_psi = psi_target - X[2,0]
+    e_phi = phi_target - X[3]
+    e_theta = theta_target - X[4]
+    e_psi = psi_target - X[5]
 
     angle_servo_phi = pid_phi.update(e_phi)
     angle_servo_theta = pid_theta.update(e_theta)
@@ -241,11 +231,13 @@ for i in range(n_steps):
     control_torque = np.array([torque_phi, torque_theta, torque_psi])
     total_torque = control_torque + ext_torque
 
+    X, P = ekf_step(X, P, total_torque, z_meas, dt, Q, R)
+
     dot = rocket_rotational_dynamics(state, total_torque)
     state += dot * dt
 
     log_true.append(state.copy())
-    log_kalman.append(X.flatten())
+    log_kalman.append(X.copy())
     log_meas.append(meas_euler.copy())
     log_pid.append([angle_servo_phi, angle_servo_theta, angle_servo_psi])
     log_external.append(ext_torque.copy())
@@ -253,7 +245,6 @@ for i in range(n_steps):
 
 # =========================
 # Plots
-# =========================
 
 log_true = np.array(log_true)
 log_kalman = np.array(log_kalman)
@@ -264,13 +255,12 @@ log_control = np.array(log_control)
 log_targets = np.array(log_targets)
 todeg = 180/np.pi
 
-# Orientaciones
 plt.figure(figsize=(14, 8))
 for i, label in enumerate(["Roll", "Pitch", "Yaw"]):
     plt.subplot(3,1,i+1)
     plt.plot(t_eval, log_true[:,3+i]*todeg, label='True', linewidth=1.5)
     plt.plot(t_eval, log_meas[:,i]*todeg, label='Measured', alpha=0.4)
-    plt.plot(t_eval, log_kalman[:,i]*todeg, label='Kalman', color='red', linestyle='-')
+    plt.plot(t_eval, log_kalman[:,3+i]*todeg, label='Kalman', color='red', linestyle='-')
     plt.plot(t_eval, log_targets[:,i]*todeg, '--k', label='Target')
     plt.ylabel("Angle (°)")
     plt.title(f"{label} Tracking")
@@ -281,7 +271,6 @@ plt.xlabel("Time (s)")
 plt.tight_layout()
 plt.show()
 
-# Ángulos del servo
 plt.figure(figsize=(14,6))
 for i, label in enumerate(["Servo angle Roll", "Servo angle Pitch", "Servo angle Yaw"]):
     plt.subplot(3,1,i+1)
@@ -294,7 +283,6 @@ plt.xlabel("Time (s)")
 plt.tight_layout()
 plt.show()
 
-# Torques
 plt.figure(figsize=(14, 8))
 torque_labels = ['Roll Torque', 'Pitch Torque', 'Yaw Torque']
 for i in range(3):

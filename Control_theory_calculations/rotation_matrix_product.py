@@ -27,7 +27,7 @@ Rz = sp.Matrix([
 
 
 # Combined rotation matrix (Rz * Ry * Rx)
-R = Ry@Rx
+R = Rx@Ry
 Ra = R*a
 
 # Display each rotation matrix
@@ -39,7 +39,7 @@ print("\nRotation matrix Rx (around X-axis):")
 sp.pprint(Rx)
 
 # Print the result of the multiplication of the matrices
-print("\nResult of the multiplication of the matrices (Rz * Ry * Rx):")
+print("\nResult of the multiplication of the matrices (Ry * Rx):")
 sp.pprint(R)
 
 # Print the result of the multiplication of the matrices
