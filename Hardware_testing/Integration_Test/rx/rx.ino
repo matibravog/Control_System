@@ -1,56 +1,81 @@
 #include <Arduino.h>
-#include "EBYTE.h"
+#include <WiFi.h>
+#include <esp_now.h>
 
-// Pines Serial2 para EBYTE
-#define EBYTE_RX 16  // conecta al TX del transmisor
-#define EBYTE_TX 17  // conecta al RX del transmisor
-#define EBYTE_M0 4
-#define EBYTE_M1 2
-#define EBYTE_AX 15
+// Must match transmitter definitions exactly
+struct __attribute__((packed)) IMUSample {
+  int16_t roll;   // degrees *100
+  int16_t pitch;
+  int16_t yaw;
+  uint16_t ts;    // seconds since boot (uint16)
+};
 
-// Definición de la estructura igual al transmisor
-typedef struct __attribute__((packed)) {
-  float roll;
-  float pitch;
-  float yaw;
-  float altitude_baro;
-  float lat;
-  float lon;
-  float altitude_gps;
-  uint32_t timestamp_ms;
-} TelemetryPacket;
+struct __attribute__((packed)) BaroSample {
+  uint16_t pressure; // hPa *100
+  int16_t altitude;  // m *100
+  uint16_t ts;       // seconds since boot
+};
 
-TelemetryPacket telemetry;
+#define IMU_SAMPLES_PER_PACKET 10
 
-EBYTE transceiver(&Serial2, EBYTE_M0, EBYTE_M1, EBYTE_AX);
+struct __attribute__((packed)) TelemetryPacket {
+  uint8_t imu_count;
+  IMUSample imu[IMU_SAMPLES_PER_PACKET];
+  BaroSample baro;
+  uint32_t seq;
+};
+
+// Validate angle range -180° to +180°
+bool isValidAngle(int16_t val) {
+  float angle = val / 100.0f;
+  return angle >= -180.0f && angle <= 180.0f;
+}
+
+void OnDataRecv(const esp_now_recv_info_t *mac_addr, const uint8_t *data, int len) {
+  if (len != sizeof(TelemetryPacket)) {
+    Serial.printf("[RX] Packet size mismatch: %d bytes (expected %d)\n", len, sizeof(TelemetryPacket));
+    return;
+  }
+
+  TelemetryPacket pkt;
+  memcpy(&pkt, data, sizeof(pkt));
+
+  Serial.printf("\n[RX] Packet seq=%u\n", pkt.seq);
+  Serial.printf(" Baro: Pressure=%.2f hPa, Altitude=%.2f m, TS=%u\n",
+                pkt.baro.pressure / 100.0f,
+                pkt.baro.altitude / 100.0f,
+                pkt.baro.ts);
+
+  for (uint8_t i = 0; i < pkt.imu_count; i++) {
+    if (!isValidAngle(pkt.imu[i].roll) || !isValidAngle(pkt.imu[i].pitch) || !isValidAngle(pkt.imu[i].yaw)) {
+      Serial.printf(" IMU[%d]: CORRUPTED data! Raw: Roll=%d, Pitch=%d, Yaw=%d, TS=%u\n",
+                    i, pkt.imu[i].roll, pkt.imu[i].pitch, pkt.imu[i].yaw, pkt.imu[i].ts);
+    } else {
+      Serial.printf(" IMU[%d]: Roll=%.2f°, Pitch=%.2f°, Yaw=%.2f°, TS=%u\n",
+                    i,
+                    pkt.imu[i].roll / 100.0f,
+                    pkt.imu[i].pitch / 100.0f,
+                    pkt.imu[i].yaw / 100.0f,
+                    pkt.imu[i].ts);
+    }
+  }
+}
 
 void setup() {
   Serial.begin(115200);
   delay(100);
 
-  Serial2.begin(9600, SERIAL_8N1, EBYTE_RX, EBYTE_TX);
+  WiFi.mode(WIFI_STA);
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("ESP-NOW init failed");
+    while (true) delay(1000);
+  }
 
-  transceiver.init();
-  transceiver.PrintParameters();
+  esp_now_register_recv_cb(OnDataRecv);
 
-  Serial.println("Receptor iniciado");
+  Serial.println("ESP-NOW Receiver initialized");
 }
 
 void loop() {
-  // Verificar si hay datos disponibles para leer
-  if (Serial2.available() >= sizeof(TelemetryPacket)) {
-    if (transceiver.GetStruct(&telemetry, sizeof(telemetry))) {
-      // Mostrar datos recibidos
-      Serial.printf("Recibido:\n");
-      Serial.printf("Roll: %.1f, Pitch: %.1f, Yaw: %.1f\n", telemetry.roll, telemetry.pitch, telemetry.yaw);
-      Serial.printf("Altitud Baro: %.2f m\n", telemetry.altitude_baro);
-      Serial.printf("Latitud: %.6f, Longitud: %.6f\n", telemetry.lat, telemetry.lon);
-      Serial.printf("Altitud GPS: %.2f m\n", telemetry.altitude_gps);
-      Serial.printf("Timestamp: %u ms\n\n", telemetry.timestamp_ms);
-    } else {
-      Serial.println("Error leyendo estructura");
-    }
-  }
-
-  delay(50);
+  delay(500); // Idle, wait for packets
 }

@@ -12,9 +12,9 @@ void setup() {
   }
 
   // Set oversampling to 1x for temperature, pressure, and humidity
-  bme.setTemperatureOversampling(BME680_OS_1X);
-  bme.setPressureOversampling(BME680_OS_1X);
-  bme.setHumidityOversampling(BME680_OS_1X);
+  // bme.setTemperatureOversampling(BME680_OS_1X);
+  bme.setPressureOversampling(BME680_OS_16X);
+  // bme.setHumidityOversampling(BME680_OS_1X);
 
   // Disable the IIR filter
   bme.setIIRFilterSize(BME680_FILTER_SIZE_0);
@@ -32,17 +32,17 @@ void loop() {
   unsigned long end = millis();
 
   // Print measurement data
-  Serial.print("Temperature = ");
-  Serial.print(bme.temperature);
-  Serial.println(" °C");
+  // Serial.print("Temperature = ");
+  // Serial.print(bme.temperature);
+  // Serial.println(" °C");
 
   Serial.print("Pressure = ");
   Serial.print(bme.pressure / 100.0); // Convert to hPa
   Serial.println(" hPa");
 
-  Serial.print("Humidity = ");
-  Serial.print(bme.humidity);
-  Serial.println(" %");
+  // Serial.print("Humidity = ");
+  // Serial.print(bme.humidity);
+  // Serial.println(" %");
 
   // Print the time it took for the measurement
   Serial.print("Measurement time: ");
